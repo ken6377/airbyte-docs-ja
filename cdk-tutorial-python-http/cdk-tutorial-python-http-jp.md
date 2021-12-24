@@ -275,67 +275,68 @@ class SourcePythonHttpTutorial(AbstractSource):
         ...
 
     def streams(self, config: Mapping[str, Any]) -> List[Stream]:
-        # NoAuth just means there is no authentication required for this API and is included for completeness.
-        # Skip passing an authenticator if no authentication is required.
-        # Other authenticators are available for API token-based auth and Oauth2. 
+        # NoAuthは、このAPIに認証が必要ないことを意味するだけであり、完全性を期すために含まれています。
+        # 認証が必要ない場合はスキップします。
+        # 他の認証方法としては、APIトークンやOauth2が利用可能です。 
         auth = NoAuth()  
         return [ExchangeRates(authenticator=auth)]
 ```
 
-Having created this stream in code, we'll put a file `exchange_rates.json` in the `schemas/` folder. You can download the JSON file describing the output schema [here](https://github.com/airbytehq/airbyte/blob/master/airbyte-cdk/python/docs/tutorials/http_api_source_assets/exchange_rates.json) for convenience and place it in `schemas/`.
+このストリームをコードで作成した後、`schemas/` フォルダに `exchange_rates.json` というファイルを置きます。出力スキーマを記述した JSON ファイルを [ここから](https://github.com/airbytehq/airbyte/blob/master/airbyte-cdk/python/docs/tutorials/http_api_source_assets/exchange_rates.json) ダウンロードして、`schemas/` に置いておくと便利です。
 
-With `.json` schema file in place, let's see if the connector can now find this schema and produce a valid catalog:
+スキーマファイル `.json` を配置した状態で、コネクタがこのスキーマを見つけて、有効なカタログを生成できるかどうか見てみましょう。
 
 ```text
 python main.py discover --config sample_files/config.json
 ```
 
-you should see some output like:
+このような出力が表示されるはずです。
 
 ```text
 {"type": "CATALOG", "catalog": {"streams": [{"name": "exchange_rates", "json_schema": {"$schema": "http://json-schema.org/draft-04/schema#", "type": "object", "properties": {"base": {"type": "string"}, "rates": {"type": "object", "properties": {"GBP": {"type": "number"}, "HKD": {"type": "number"}, "IDR": {"type": "number"}, "PHP": {"type": "number"}, "LVL": {"type": "number"}, "INR": {"type": "number"}, "CHF": {"type": "number"}, "MXN": {"type": "number"}, "SGD": {"type": "number"}, "CZK": {"type": "number"}, "THB": {"type": "number"}, "BGN": {"type": "number"}, "EUR": {"type": "number"}, "MYR": {"type": "number"}, "NOK": {"type": "number"}, "CNY": {"type": "number"}, "HRK": {"type": "number"}, "PLN": {"type": "number"}, "LTL": {"type": "number"}, "TRY": {"type": "number"}, "ZAR": {"type": "number"}, "CAD": {"type": "number"}, "BRL": {"type": "number"}, "RON": {"type": "number"}, "DKK": {"type": "number"}, "NZD": {"type": "number"}, "EEK": {"type": "number"}, "JPY": {"type": "number"}, "RUB": {"type": "number"}, "KRW": {"type": "number"}, "USD": {"type": "number"}, "AUD": {"type": "number"}, "HUF": {"type": "number"}, "SEK": {"type": "number"}}}, "date": {"type": "string"}}}, "supported_sync_modes": ["full_refresh"]}]}}
 ```
 
-It's that simple! Now the connector knows how to declare your connector's stream's schema. We declare only one stream since our source is simple, but the principle is exactly the same if you had many streams.
+簡単でしょう！これでコネクタは、ストリームのスキーマを宣言する方法を知ることができます。今回はソースが単純なのでストリームを1つだけ宣言しますが、多くのストリームがあったとしても原理は全く同じです。
 
-You can also dynamically define schemas, but that's beyond the scope of this tutorial. See the [schema docs](../../cdk-python/full-refresh-stream.md#defining-the-streams-schema) for more information.
+スキーマを動的に定義することもできますが、それはこのチュートリアルの範囲外です。詳しくは[schema docs](../../cdk-python/full-refresh-stream.md#defining-the-streams-schema) を参照してください。
 
 
-# Step 6: Read Data
+# Step 6: ストリームを読み込むための機能を実装する
 
-Describing schemas is good and all, but at some point we have to start reading data! So let's get to work. But before, let's describe what we're about to do:
+スキーマを記述するのは良いことですが、どこかからデータを読み始めなければなりません。というわけで、さっそく取り掛かりましょう。その前に、これからやろうとしていることを説明します。
 
-The `HttpStream` superclass, like described in the [concepts documentation](../../cdk-python/http-streams.md), is facilitating reading data from HTTP endpoints. It contains built-in functions or helpers for:
+`HttpStream` スーパークラスは、[コンセプトのドキュメント](https://docs.airbyte.io/connector-development/cdk-python/http-streams) にあるように、HTTPエンドポイントからのデータの読み込みを容易にするものです。このクラスには、以下のような組み込み関数やヘルパーが含まれています。
 
-* authentication
-* pagination
-* handling rate limiting or transient errors
-* and other useful functionality
+* 認証
+* ページネーション
+* レート制限や一時的なエラーの処理
+* その他便利な機能
 
-In order for it to be able to do this, we have to provide it with a few inputs:
+このような機能を実現するためには、いくつかの入力を提供する必要があります。
 
-* the URL base and path of the endpoint we'd like to hit
-* how to parse the response from the API
-* how to perform pagination
+* ヒットさせたいエンドポイントのURLとパス
+* APIからのレスポンスのパース方法
+* ページネーションの実行方法
 
-Optionally, we can provide additional inputs to customize requests:
+オプションとして、リクエストをカスタマイズするための追加入力を提供することができます。
 
-* request parameters and headers
-* how to recognize rate limit errors, and how long to wait \(by default it retries 429 and 5XX errors using exponential backoff\)
-* HTTP method and request body if applicable
-* configure exponential backoff policy
+* リクエストパラメーターとヘッダー
+* レート制限エラーをどのように認識し、どの程度待機させるか
+* HTTPメソッドとリクエストボディ（必要に応じて）
+* exponential backoff（指数関数的に処理のリトライ間隔を後退）ポリシーを設定する
 
-Backoff policy options:
+バックオフポリシーのオプション
 
-* `retry_factor` Specifies factor for exponential backoff policy \(by default is 5\)
-* `max_retries` Specifies maximum amount of retries for backoff policy \(by default is 5\)
-* `raise_on_http_errors` If set to False, allows opting-out of raising HTTP code exception \(by default is True\)
+* `retry_factor` Exponential Backoff Policy の係数を指定します。
+* `max_retries` バックオフポリシーの再試行回数の最大値を指定します(デフォルトは5回)
+* `raise_on_http_errors`  False に設定すると、HTTP コード例外の発生を抑制します (デフォルトは True)。
 
-There are many other customizable options - you can find them in the [`airbyte_cdk.sources.streams.http.HttpStream`](https://github.com/airbytehq/airbyte/blob/master/airbyte-cdk/python/airbyte_cdk/sources/streams/http/http.py) class.
 
-So in order to read data from the exchange rates API, we'll fill out the necessary information for the stream to do its work. First, we'll implement a basic read that just reads the last day's exchange rates, then we'll implement incremental sync using stream slicing.
+他にも多くのカスタマイズ可能なオプションがあり、それらは [`airbyte_cdk.sources.streams.http.HttpStream`](https://github.com/airbytehq/airbyte/blob/master/airbyte-cdk/python/airbyte_cdk/sources/streams/http/http.py) クラスで見つけることができます。
 
-Let's begin by pulling data for the last day's rates by using the `/latest` endpoint:
+為替レートAPIからデータを読み込むために、ストリームが作業を行うために必要な情報を入力します。まず、前日の為替レートを読み取るだけの基本的な読み取りを実装し、次にストリームスライスを使用してインクリメンタルな同期を実装します。
+
+まず、`/latest`エンドポイントを使用して、直近の為替レートのデータを取得します。
 
 ```python
 class ExchangeRates(HttpStream):
@@ -354,7 +355,7 @@ class ExchangeRates(HttpStream):
         stream_slice: Mapping[str, Any] = None, 
         next_page_token: Mapping[str, Any] = None
     ) -> str:
-        # The "/latest" path gives us the latest currency exchange rates
+        # "/latest "パスは最新の為替レートを提供します
         return "latest"  
 
     def request_params(
@@ -363,7 +364,7 @@ class ExchangeRates(HttpStream):
             stream_slice: Mapping[str, Any] = None,
             next_page_token: Mapping[str, Any] = None,
     ) -> MutableMapping[str, Any]:
-        # The api requires that we include the base currency as a query param so we do that in this method
+        # API仕様上、クエリパラメータに基本通貨を含める必要があるため、このメソッドでそれを行います。
         return {'base': self.base}
 
     def parse_response(
@@ -373,19 +374,24 @@ class ExchangeRates(HttpStream):
             stream_slice: Mapping[str, Any] = None,
             next_page_token: Mapping[str, Any] = None,
     ) -> Iterable[Mapping]:
-        # The response is a simple JSON whose schema matches our stream's schema exactly, 
-        # so we just return a list containing the response
+        # 応答はシンプルなJSONで、そのスキーマはストリームのスキーマと正確に一致します。
+        # なので、レスポンスを含むリストを返すだけです。
         return [response.json()]
 
     def next_page_token(self, response: requests.Response) -> Optional[Mapping[str, Any]]:
-        # The API does not offer pagination, 
-        # so we return None to indicate there are no more pages in the response
+        # APIはページネーションを提供しません。
+        # そこで、レスポンスにもうページがないことを示すために None を返します。
         return None
 ```
 
-This may look big, but that's just because there are lots of \(unused, for now\) parameters in these methods \(those can be hidden with Python's `**kwargs`, but don't worry about it for now\). Really we just added a few lines of "significant" code: 1. Added a constructor `__init__` which stores the `base` currency to query for. 2. `return {'base': self.base}` to add the `?base=<base-value>` query parameter to the request based on the `base` input by the user. 3. `return [response.json()]` to parse the response from the API to match the schema of our schema `.json` file. 4. `return "latest"` to indicate that we want to hit the `/latest` endpoint of the API to get the latest exchange rate data.
+コード行数が多く感じるかもしれませんが、それはメソッドに多くの（今のところ使われていない）パラメータがあるからです（これらはPythonの`**kwargs`で隠すことができますが、今のところ気にしないでください）。本当に数行の "重要な "コードを追加しただけです。
 
-Let's also pass the `base` parameter input by the user to the stream class:
+1. コンストラクタ `__init__` を追加し、クエリに使用する `base` 通貨を格納するようにしました。 
+1. `return {'base': self.base}` を使用して、ユーザーが入力した `base` に基づいて `?base=<base-value>` クエリパラメータをリクエストに追加しています。
+1. `return [response.json()]` で、APIからのレスポンスをパースして、スキーマ `.json` ファイルのスキーマと一致させています。
+1. `return "latest"` で、APIの `/latest` エンドポイントをヒットして、最新の為替レートデータを取得したいことを示します。
+
+では、ユーザーが入力した `base` パラメータをストリームクラスに渡しましょう。
 
 ```python
 def streams(self, config: Mapping[str, Any]) -> List[Stream]:
@@ -393,33 +399,40 @@ def streams(self, config: Mapping[str, Any]) -> List[Stream]:
         return [ExchangeRates(authenticator=auth, base=config['base'])]
 ```
 
-We're now ready to query the API!
+これでAPIを叩く準備ができました！
 
-To do this, we'll need a [ConfiguredCatalog](../../../understanding-airbyte/beginners-guide-to-catalog.md). We've prepared one [here](https://github.com/airbytehq/airbyte/blob/master/airbyte-cdk/python/docs/tutorials/http_api_source_assets/configured_catalog.json) -- download this and place it in `sample_files/configured_catalog.json`. Then run:
+実行する為には、[ConfiguredCatalog](https://docs.airbyte.io/understanding-airbyte/beginners-guide-to-catalog) が必要です。[ここに用意されています](https://github.com/airbytehq/airbyte/blob/master/airbyte-cdk/python/docs/tutorials/http_api_source_assets/configured_catalog.json) -- これをダウンロードして `sample_files/configured_catalog.json` に置いてください。そして、実行してください。
 
 ```text
  python main.py read --config sample_files/config.json --catalog sample_files/configured_catalog.json
 ```
 
-you should see some output lines, one of which is a record from the API:
+いくつかの出力行が表示されます。そのうちの1つは、APIからのレコードです。
 
 ```text
 {"type": "RECORD", "record": {"stream": "exchange_rates", "data": {"base": "USD", "rates": {"GBP": 0.7196938353, "HKD": 7.7597848573, "IDR": 14482.4824162185, "ILS": 3.2412081092, "DKK": 6.1532478279, "INR": 74.7852709971, "CHF": 0.915763343, "MXN": 19.8439387671, "CZK": 21.3545717832, "SGD": 1.3261894911, "THB": 31.4398014067, "HRK": 6.2599917253, "EUR": 0.8274720728, "MYR": 4.0979726934, "NOK": 8.3043442284, "CNY": 6.4856433595, "BGN": 1.61836988, "PHP": 48.3516756309, "PLN": 3.770872983, "ZAR": 14.2690111709, "CAD": 1.2436905254, "ISK": 124.9482829954, "BRL": 5.4526272238, "RON": 4.0738932561, "NZD": 1.3841125362, "TRY": 8.3101365329, "JPY": 108.0182043856, "RUB": 74.9555647497, "KRW": 1111.7583781547, "USD": 1.0, "AUD": 1.2840711626, "HUF": 300.6206040546, "SEK": 8.3829540753}, "date": "2021-04-26"}, "emitted_at": 1619498062000}}
 ```
 
-There we have it - a stream which reads data in just a few lines of code!
+たった数行のコードで、データを読み込むストリームが完成しました。
 
-We theoretically _could_ stop here and call it a connector. But let's give adding incremental sync a shot.
+ここで終わりにすることも出来ますが、続いてインクリメンタルな同期を追加することにも挑戦してみましょう。
 
-## Adding incremental sync
+## インクリメンタル同期を追加する
 
-To add incremental sync, we'll do a few things: 1. Pass the `start_date` param input by the user into the stream. 2. Declare the stream's `cursor_field`. 3. Implement the `get_updated_state` method. 4. Implement the `stream_slices` method. 5. Update the `path` method to specify the date to pull exchange rates for. 6. Update the configured catalog to use `incremental` sync when we're testing the stream.
+インクリメンタル同期を追加するために、いくつかのことを行います。 
 
-We'll describe what each of these methods do below. Before we begin, it may help to familiarize yourself with how incremental sync works in Airbyte by reading the [docs on incremental](../../../understanding-airbyte/connections/incremental-append.md).
+1. ユーザが入力した `start_date` パラメータをストリームに渡します。
+1. ストリームの `cursor_field` を宣言します。
+1. `get_updated_state` メソッドを実装します。
+1.  `stream_slices` メソッドを実装します。
+1.  `path` メソッドを更新して、為替レートを取得する日付を指定します。
+1.  ストリームのテスト時に `incremental` 同期を使用するよう、設定されたカタログを更新します。
 
-To keep things concise, we'll only show functions as we edit them one by one.
+これらのメソッドがそれぞれ何をするのか説明します。まず、Airbyteでインクリメンタル同期がどのように動作するか、[docs on incremental](https://docs.airbyte.io/understanding-airbyte/connections/incremental-append) を読んで理解しておくとよいでしょう。
 
-Let's get the easy parts out of the way and pass the `start_date`:
+簡潔さを保つために、一つずつ編集しながら関数だけを表示することにします。
+
+簡単なところから始めて、`start_date`を渡してみましょう。
 
 ```python
 def streams(self, config: Mapping[str, Any]) -> List[Stream]:
