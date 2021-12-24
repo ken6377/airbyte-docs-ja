@@ -437,12 +437,12 @@ def streams(self, config: Mapping[str, Any]) -> List[Stream]:
 ```python
 def streams(self, config: Mapping[str, Any]) -> List[Stream]:
         auth = NoAuth()
-        # Parse the date from a string into a datetime object
+        # 文字列から日付をパースしてdatetimeオブジェクトに変換します
         start_date = datetime.strptime(config['start_date'], '%Y-%m-%d') 
         return [ExchangeRates(authenticator=auth, base=config['base'], start_date=start_date)]
 ```
 
-Let's also add this parameter to the constructor and declare the `cursor_field`:
+また、コンストラクタにこのパラメータを追加して、`cursor_field`を宣言しましょう。
 
 ```python
 from datetime import datetime, timedelta
@@ -459,16 +459,16 @@ class ExchangeRates(HttpStream):
         self.start_date = start_date
 ```
 
-Declaring the `cursor_field` informs the framework that this stream now supports incremental sync. The next time you run `python main_dev.py discover --config sample_files/config.json` you'll find that the `supported_sync_modes` field now also contains `incremental`.
+`cursor_field` を宣言すると、このストリームが現在インクリメンタル同期をサポートしていることがフレームワークに通知されます。次に `python main_dev.py discover --config sample_files/config.json` を実行すると、 `supported_sync_modes` フィールドに `incremental` も含まれていることが分かります。
 
-But we're not quite done with supporting incremental, we have to actually emit state! We'll structure our state object very simply: it will be a `dict` whose single key is `'date'` and value is the date of the last day we synced data from. For example, `{'date': '2021-04-26'}` indicates the connector previously read data up until April 26th and therefore shouldn't re-read anything before April 26th.
+しかし、インクリメンタルをサポートするだけでは不十分で、実際に状態を出力する必要があります。それは `dict` で、キーは `'date'` で、値はデータを同期させた最後の日の日付です。例えば、`{'date': '2021-04-26'}` は、コネクタが以前に4月26日までのデータを読んだので、4月26日以前のデータを再読み込みしてはいけないということを表します。
 
-Let's do this by implementing the `get_updated_state` method inside the `ExchangeRates` class.
+`ExchangeRates` クラスに `get_updated_state` メソッドを実装して、これを実現しましょう。
 
 ```python
     def get_updated_state(self, current_stream_state: MutableMapping[str, Any], latest_record: Mapping[str, Any]) -> Mapping[str, any]:
-        # This method is called once for each record returned from the API to compare the cursor field value in that record with the current state
-        # we then return an updated state object. If this is the first time we run a sync or no state was passed, current_stream_state will be None.
+        # このメソッドは API から返された各レコードに対して一度だけ呼び出され、そのレコードのカーソルフィールドの値と現在の状態を比較します。
+        # その後、更新された状態オブジェクトを返します。初めて同期を実行した場合や、状態が渡されなかった場合、 current_stream_state は None になります。
         if current_stream_state is not None and 'date' in current_stream_state:
             current_parsed_date = datetime.strptime(current_stream_state['date'], '%Y-%m-%d')
             latest_record_date = datetime.strptime(latest_record['date'], '%Y-%m-%d')
@@ -477,15 +477,15 @@ Let's do this by implementing the `get_updated_state` method inside the `Exchang
             return {'date': self.start_date.strftime('%Y-%m-%d')}
 ```
 
-This implementation compares the date from the latest record with the date in the current state and takes the maximum as the "new" state object.
+この実装では、最新のレコードの日付と現在の状態の日付を比較し、その最大値を「新しい」状態オブジェクトとして取得します。
 
-We'll implement the `stream_slices` method to return a list of the dates for which we should pull data based on the stream state if it exists:
+ストリーム状態が存在すれば、それに基づいてデータを取得すべき日付のリストを返すために、`stream_slices`メソッドを実装します。
 
 ```python
  def _chunk_date_range(self, start_date: datetime) -> List[Mapping[str, any]]:
         """
-        Returns a list of each day between the start date and now.
-        The return value is a list of dicts {'date': date_string}.
+        開始日から現在までの各日付のリストを返します。
+        戻り値はdicts {'date': date_string}のリストです。
         """
         dates = []
         while start_date < datetime.now():
@@ -499,73 +499,69 @@ We'll implement the `stream_slices` method to return a list of the dates for whi
         return self._chunk_date_range(start_date)
 ```
 
-Each slice will cause an HTTP request to be made to the API. We can then use the information present in the `stream_slice` parameter \(a single element from the list we constructed in `stream_slices` above\) to set other configurations for the outgoing request like `path` or `request_params`. For more info about stream slicing, see [the slicing docs](../../cdk-python/stream-slices.md).
+それぞれのスライスで、APIにHTTPリクエストが行われます。 `stream_slice` パラメータ (上記の `stream_slices` で作成したリストの要素) に含まれる情報を使用して、 `path` や `request_params` など、送信するリクエストに関する他の設定を行うことができます。ストリームスライスの詳細については、[the slicing docs](https://docs.airbyte.io/connector-development/cdk-python/stream-slices)を参照してください。
 
-In order to pull data for a specific date, the Exchange Rates API requires that we pass the date as the path component of the URL. Let's override the `path` method to achieve this:
+特定の日付のデータを取得するために、Exchange Rates APIではURLのパスコンポーネントとして日付を渡す必要があります。これを実現するために、`path`メソッドをオーバーライドしましょう。
 
 ```python
 def path(self, stream_state: Mapping[str, Any] = None, stream_slice: Mapping[str, Any] = None, next_page_token: Mapping[str, Any] = None) -> str:
     return stream_slice['date']
 ```
 
-With these changes, your implementation should look like the file [here](https://github.com/airbytehq/airbyte/blob/master/airbyte-integrations/connectors/source-python-http-tutorial/source_python_http_tutorial/source.py).
+これらの変更により、あなたの実装は[こちらのファイル](https://github.com/airbytehq/airbyte/blob/master/airbyte-integrations/connectors/source-python-http-tutorial/source_python_http_tutorial/source.py)のようになるはずです。
 
-The last thing we need to do is change the `sync_mode` field in the `sample_files/configured_catalog.json` to `incremental`:
+最後に、 `sample_files/configured_catalog.json` にある `sync_mode` フィールドを `incremental` に変更します。
 
 ```text
 "sync_mode": "incremental",
 ```
 
-We should now have a working implementation of incremental sync!
+これで、インクリメンタルシンクの実装ができたはずです。
 
-Let's try it out:
+試してみましょう。
 
 ```text
 python main.py read --config sample_files/config.json --catalog sample_files/configured_catalog.json
 ```
 
-You should see a bunch of `RECORD` messages and `STATE` messages. To verify that incremental sync is working, pass the input state back to the connector and run it again:
+沢山の `RECORD` メッセージと `STATE` メッセージが表示されるはずです。インクリメンタル同期が機能していることを確認するために、入力された状態をコネクタに戻し、再度実行してください。
 
 ```text
-# Save the latest state to sample_files/state.json
+# 最新の状態をsample_files/state.jsonに保存します。
 python main.py read --config sample_files/config.json --catalog sample_files/configured_catalog.json | grep STATE | tail -n 1 | jq .state.data > sample_files/state.json
 
-# Run a read operation with the latest state message
+# 最新状態メッセージで読み取り操作を実行します
 python main.py read --config sample_files/config.json --catalog sample_files/configured_catalog.json --state sample_files/state.json
 ```
 
-You should see that only the record from the last date is being synced! This is acceptable behavior, since Airbyte requires at-least-once delivery of records, so repeating the last record twice is OK.
+最後の日付のレコードだけが同期されていることがわかるはずです。Airbyteはレコードの配信を最低1回にする必要があるので、最後のレコードを2回繰り返すのは問題ありません。
 
-With that, we've implemented incremental sync for our connector!
+これでコネクタにインクリメンタル同期が実装されました。
 
+# Step 7: Airbyteのコネクタを使用する
 
+コネクタを使用するには、`docker build . -t airbyte/source-python-http-example:dev`を実行してコンテナ用の docker イメージをビルドします。その後、[building a Python source tutorial](https://docs.airbyte.io/connector-development/tutorials/building-a-python-source#step-11-add-the-connector-to-the-api-ui)の説明に従って、Airbyte UI でコネクタを使用するために、適宜名前を置き換えて使用するようにします。
 
-
-
-# Step 7: Use the Connector in Airbyte
-
-To use your connector in your own installation of Airbyte, build the docker image for your container by running `docker build . -t airbyte/source-python-http-example:dev`. Then, follow the instructions from the [building a Python source tutorial](../building-a-python-source.md#step-11-add-the-connector-to-the-api-ui) for using the connector in the Airbyte UI, replacing the name as appropriate.
-
-Note: your built docker image must be accessible to the `docker` daemon running on the Airbyte node. If you're doing this tutorial locally, these instructions are sufficient. Otherwise you may need to push your Docker image to Dockerhub.
+注意：ビルドした docker イメージは、Airbyte ノードで動作している `docker` デーモンからアクセス可能である必要があります。このチュートリアルをローカルで行う場合は、この手順で十分です。そうでない場合は、Dockerhub に Docker イメージをプッシュする必要があるかもしれません。
 
 
-# Step 8: Test Connector
+# Step 8: 単体テストまたは結合テストの作成
 
-## Unit Tests
+## 単体テスト
 
-Add any relevant unit tests to the `unit_tests` directory. Unit tests should **not** depend on any secrets.
+関連するユニットテストを `unit_tests` ディレクトリに追加してください。**ユニットテストはどんなsecretにも依存してはいけません**。
 
-You can run the tests using `python -m pytest -s unit_tests`
+テストは `python -m pytest -s unit_tests` を使って実行することができます。
 
-## Integration Tests
+## 結合テスト
 
-Place any integration tests in the `integration_tests` directory such that they can be [discovered by pytest](https://docs.pytest.org/en/6.2.x/goodpractices.html#conventions-for-python-test-discovery).
+統合テストは `integration_tests` ディレクトリに置き、[pytest](https://docs.pytest.org/en/6.2.x/goodpractices.html#conventions-for-python-test-discovery)で検出できるようにします。
 
-## Standard Tests
+## 標準テスト
 
-Standard tests are a fixed set of tests Airbyte provides that every Airbyte source connector must pass. While they're only required if you intend to submit your connector to Airbyte, you might find them helpful in any case. See [Testing your connectors](../../testing-connectors/)
+標準テストは、すべてのAirbyteソースコネクタが通過しなければならない、Airbyteが提供する固定テストセットです。Airbyte にコネクタを提出する場合のみ必要ですが、どのような場合でも役に立つと思います。[コネクタのテスト](https://docs.airbyte.io/connector-development/testing-connectors)を参照してください。
 
-If you want to submit this connector to become a default connector within Airbyte, follow steps 8 onwards from the [Python source checklist](../building-a-python-source.md#step-8-set-up-standard-tests)
+このコネクタをAirbyteのデフォルトコネクタとして登録する場合は、[Pythonソースチェックリスト](https://docs.airbyte.io/connector-development/tutorials/building-a-python-source#step-8-set-up-standard-tests)のステップ8以降に進んでください。
 
 
 
