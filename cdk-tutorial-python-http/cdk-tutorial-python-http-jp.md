@@ -1,5 +1,8 @@
 # Python CDK: Creating a HTTP API Source
 
+2021年12月25日現在の[Python CDK: Creating a HTTP API Source](https://docs.airbyte.io/connector-development/tutorials/cdk-tutorial-python-http)をDeepLで翻訳したものです。
+
+
 **目次**
 
 - [Python CDK: Creating a HTTP API Source](#python-cdk-creating-a-http-api-source)
