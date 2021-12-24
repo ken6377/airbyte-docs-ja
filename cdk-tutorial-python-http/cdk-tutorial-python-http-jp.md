@@ -1,14 +1,10 @@
 # Python CDK: Creating a HTTP API Source
 
-2021年12月25日現在の[Python CDK: Creating a HTTP API Source](https://docs.airbyte.io/connector-development/tutorials/cdk-tutorial-python-http)をDeepLで翻訳したものです。
-
-
 **目次**
 
-- [Python CDK: Creating a HTTP API Source](#python-cdk-creating-a-http-api-source)
-  - [概要](#概要)
-  - [要件](#要件)
-  - [チェックリスト](#チェックリスト)
+- [概要](#概要)
+- [要件](#要件)
+- [チェックリスト](#チェックリスト)
 - [Step 1: テンプレートを使ってソースを作成する](#step-1-テンプレートを使ってソースを作成する)
 - [Step 2: 新しいソースの依存関係をインストールする](#step-2-新しいソースの依存関係をインストールする)
   - [イテレーションサイクルに関する留意点](#イテレーションサイクルに関する留意点)
@@ -588,6 +584,3 @@ python main.py read --config sample_files/config.json --catalog sample_files/con
 標準テストは、すべてのAirbyteソースコネクタが通過しなければならない、Airbyteが提供する固定テストセットです。Airbyte にコネクタを提出する場合のみ必要ですが、どのような場合でも役に立つと思います。[コネクタのテスト](https://docs.airbyte.io/connector-development/testing-connectors)を参照してください。
 
 このコネクタをAirbyteのデフォルトコネクタとして登録する場合は、[Pythonソースチェックリスト](https://docs.airbyte.io/connector-development/tutorials/building-a-python-source#step-8-set-up-standard-tests)のステップ8以降に進んでください。
-
-
-
